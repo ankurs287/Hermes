@@ -1,43 +1,35 @@
 package com.godfather.ankur.travelbuddy;
 
-import android.content.Intent;
-import android.graphics.Color;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
-import android.support.v7.app.AppCompatActivity;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
+import android.support.v4.app.FragmentActivity;
+import android.support.v4.content.ContextCompat;
+import android.view.View;
+import android.widget.Button;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.godfather.ankur.travelbuddy.POJO.Example;
-import com.godfather.ankur.travelbuddy.POJO.Leg;
-import com.godfather.ankur.travelbuddy.POJO.Route;
 import com.godfather.ankur.travelbuddy.debug.Debug;
-import com.google.android.gms.location.places.GeoDataClient;
-import com.google.android.gms.location.places.Place;
-import com.google.android.gms.location.places.PlaceDetectionClient;
-import com.google.android.gms.location.places.Places;
-import com.google.android.gms.location.places.ui.PlacePicker;
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GoogleApiAvailability;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
 import com.google.android.gms.maps.model.LatLng;
-import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
-import com.google.android.gms.maps.model.PolylineOptions;
-import com.google.maps.DirectionsApi;
-import com.google.maps.DirectionsApiRequest;
-import com.google.maps.GeoApiContext;
-import com.google.maps.model.DirectionsLeg;
-import com.google.maps.model.DirectionsResult;
-import com.google.maps.model.DirectionsRoute;
-import com.google.maps.model.DirectionsStep;
-import com.google.maps.model.EncodedPolyline;
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QuerySnapshot;
 
-import org.json.JSONObject;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 import retrofit.Call;
@@ -45,138 +37,104 @@ import retrofit.Callback;
 import retrofit.GsonConverterFactory;
 import retrofit.Response;
 import retrofit.Retrofit;
-import retrofit2.http.GET;
-import retrofit2.http.Query;
 
-public class MainActivity extends AppCompatActivity implements OnMapReadyCallback {
-    protected GeoDataClient mGeoDataClient;
-    private PlaceDetectionClient mPlaceDetectionClient;
-    private GoogleMap googleMap;
+public class MainActivity extends FragmentActivity implements OnMapReadyCallback {
 
+    private GoogleMap mMap;
     LatLng origin;
     LatLng dest;
     ArrayList<LatLng> MarkerPoints;
     TextView ShowDistanceDuration;
     Polyline line;
 
-    public static int PLACE_PICKER_REQUEST = 1;
-    public static String MAPS_API_KEY = "AIzaSyAB_TWmsVj4TEsuqWPiX0ZyEnVuLyQq5O8";
+    ArrayList<LatLng> nodes;
+    FirebaseFirestore db;
+    LatLng source;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        ShowDistanceDuration = findViewById(R.id.t1);
+        initCheck();
+        db = FirebaseFirestore.getInstance();
+        getNodes();
 
-        mGeoDataClient = Places.getGeoDataClient(this, null);
-        mPlaceDetectionClient = Places.getPlaceDetectionClient(this, null);
 
+        // Initializing
+        MarkerPoints = new ArrayList<>();
+        ShowDistanceDuration = findViewById(R.id.show_distance_time);
 
-        String city = "Delhi";
-        String[] tp = {"Akshardham Temple", "Lotus Temple", "India Gate"};
-
+        // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
     }
 
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == PLACE_PICKER_REQUEST) {
-            if (resultCode == RESULT_OK) {
-                Place place = PlacePicker.getPlace(data, this);
-                String toastMsg = String.format("Place: %s", place.getName());
-                Toast.makeText(this, toastMsg, Toast.LENGTH_LONG).show();
-            }
+    private void initCheck() {
+        if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            checkLocationPermission();
+        }
+
+        //show error dialog if Google Play Services not available
+        if (!isGooglePlayServicesAvailable()) {
+            Debug.log("onCreate", "Google Play Services not available. Ending Test case.");
+            finish();
+        } else {
+            Debug.log("onCreate", "Google Play Services available. Continuing.");
         }
     }
 
-    @Override
-    public void onMapReady(GoogleMap googleMap1) {
-        googleMap = googleMap1;
+    private void getNodes() {
+        nodes = new ArrayList<>();
 
-        LatLng redfort = new LatLng(28.6561592, 77.2410203);
-        googleMap.addMarker(new MarkerOptions().position(redfort).title("Marker in red fort"));
-        origin = redfort;
+        source = new LatLng(28.596444, 77.036091);
+        Debug.log("getting Nodes");
+        db.collection("New Delhi").get()
+                .addOnCompleteListener(new OnCompleteListener<QuerySnapshot>() {
+                    @Override
+                    public void onComplete(@NonNull Task<QuerySnapshot> task) {
+                        if (task.isSuccessful()) {
+                            for (DocumentSnapshot document : task.getResult()) {
+                                Debug.log(document.getId() + " => " + document.getData());
+                                HashMap<String, Object> hm = (HashMap<String, Object>) document.getData();
 
-        LatLng indiagate = new LatLng(28.612912, 77.2295097);
-        googleMap.addMarker(new MarkerOptions().position(indiagate).title("Marker in india gate"));
-        dest = indiagate;
-
-        build_retrofit_and_get_response("driving");
-        if (true) return;
-
-        LatLng qutbminar = new LatLng(28.5244281, 77.1854559);
-        googleMap.addMarker(new MarkerOptions().position(qutbminar).title("Marker in qutb minar"));
-        LatLng lotusTemple = new LatLng(28.5514291, 77.2586885);
-        googleMap.addMarker(new MarkerOptions().position(lotusTemple).title("Marker in Lotus temple"));
-        LatLng akshardham = new LatLng(28.6126735, 77.2772619);
-        googleMap.addMarker(new MarkerOptions().position(akshardham).title("Marker in Akshardham"));
-
-        //Define list to get all latlng for the route
-        List<LatLng> path = new ArrayList();
-        path.add(qutbminar);
-        path.add(lotusTemple);
-        path.add(akshardham);
-
-        //Execute Directions API request
-        GeoApiContext context = new GeoApiContext.Builder()
-                .apiKey(MAPS_API_KEY)
-                .build();
-        DirectionsApiRequest req = DirectionsApi.getDirections(context, "28.6561592, 77.2410203", "28.612912, 77.2295097");
-        try {
-            DirectionsResult res = req.await();
-
-            //Loop through legs and steps to get encoded polylines of each step
-            if (res.routes != null && res.routes.length > 0) {
-                DirectionsRoute route = res.routes[0];
-
-                if (route.legs != null) {
-                    for (int i = 0; i < route.legs.length; i++) {
-                        DirectionsLeg leg = route.legs[i];
-                        if (leg.steps != null) {
-                            for (int j = 0; j < leg.steps.length; j++) {
-                                DirectionsStep step = leg.steps[j];
-                                if (step.steps != null && step.steps.length > 0) {
-                                    for (int k = 0; k < step.steps.length; k++) {
-                                        DirectionsStep step1 = step.steps[k];
-                                        EncodedPolyline points1 = step1.polyline;
-                                        if (points1 != null) {
-                                            //Decode polyline and add points to list of route coordinates
-                                            List<com.google.maps.model.LatLng> coords1 = points1.decodePath();
-                                            for (com.google.maps.model.LatLng coord1 : coords1) {
-                                                path.add(new LatLng(coord1.lat, coord1.lng));
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    EncodedPolyline points = step.polyline;
-                                    if (points != null) {
-                                        //Decode polyline and add points to list of route coordinates
-                                        List<com.google.maps.model.LatLng> coords = points.decodePath();
-                                        for (com.google.maps.model.LatLng coord : coords) {
-                                            path.add(new LatLng(coord.lat, coord.lng));
-                                        }
-                                    }
-                                }
                             }
+                        } else {
+                            Debug.log("Error getting documents: ", task.getException());
                         }
                     }
-                }
+                });
+
+    }
+
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        mMap = googleMap;
+
+        // Add a marker in New Delhi and move the camera
+        LatLng Model_Town = new LatLng(28.613939, 77.209021);
+//        mMap.addMarker(new MarkerOptions().position(Model_Town).title("Marker in New "));
+        mMap.moveCamera(CameraUpdateFactory.newLatLng(Model_Town));
+        mMap.animateCamera(CameraUpdateFactory.zoomTo(11));
+
+        origin = new LatLng(28.7158727, 77.1910738);
+        dest = new LatLng(24.7158727, 79.1910738);
+
+        Button btnDriving = findViewById(R.id.btnDriving);
+        btnDriving.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                build_retrofit_and_get_response("driving");
             }
-        } catch (Exception ex) {
-            Debug.log(ex.getLocalizedMessage());
-        }
+        });
 
-        //Draw the polyline
-        Debug.log(path.size());
-        if (path.size() > 0) {
-            PolylineOptions opts = new PolylineOptions().addAll(path).color(Color.BLUE).width(5);
-            googleMap.addPolyline(opts);
-        }
-
-        googleMap.getUiSettings().setZoomControlsEnabled(true);
-
-        googleMap.moveCamera(CameraUpdateFactory.newLatLngZoom(qutbminar, 10));
+        Button btnWalk = findViewById(R.id.btnWalk);
+        btnWalk.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                build_retrofit_and_get_response("walking");
+            }
+        });
     }
 
     private void build_retrofit_and_get_response(String type) {
@@ -188,22 +146,43 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
                 .addConverterFactory(GsonConverterFactory.create())
                 .build();
 
-        Api service = retrofit.create(Api.class);
+        RetrofitMaps service = retrofit.create(RetrofitMaps.class);
 
-        String originlatlang = origin.latitude + "," + origin.longitude;
-        String destlatlang = dest.latitude + "," + dest.longitude;
+        Call<Example> call = service.getDistanceDuration("metric", origin.latitude + "," + origin.longitude, dest.latitude + "," + dest.longitude, type);
 
-        service.getJson(originlatlang, destlatlang).enqueue(new Callback<Example>() {
+        call.enqueue(new Callback<Example>() {
             @Override
             public void onResponse(Response<Example> response, Retrofit retrofit) {
-                Debug.log("CallBack", " response is " + response);
-                Route routeA = response.body().getRoutes().get(0);
-                Leg legs = routeA.getLegs().get(0);
+
+                try {
+                    //Remove previous line from map
+                    if (line != null) {
+                        line.remove();
+                    }
+                    // This loop will go through all the results and add marker on each location.
+                    for (int i = 0; i < response.body().getRoutes().size(); i++) {
+                        Debug.log(response.body().getRoutes().get(i));
+                        String distance = response.body().getRoutes().get(i).getLegs().get(i).getDistance().getText();
+                        String time = response.body().getRoutes().get(i).getLegs().get(i).getDuration().getText();
+                        ShowDistanceDuration.setText("Distance:" + distance + ", Duration:" + time);
+//                        String encodedString = response.body().getRoutes().get(0).getOverviewPolyline().getPoints();
+//                        List<LatLng> list = decodePoly(encodedString);
+//                        line = mMap.addPolyline(new PolylineOptions()
+//                                .addAll(list)
+//                                .width(20)
+//                                .color(Color.RED)
+//                                .geodesic(true)
+//                        );
+                    }
+                } catch (Exception e) {
+                    Debug.log("onResponse", "There is an error");
+                    e.printStackTrace();
+                }
             }
 
             @Override
             public void onFailure(Throwable t) {
-                Debug.log("CallBack", " Throwable is " + t);
+                Debug.log("onFailure", t.toString());
             }
         });
 
@@ -241,15 +220,51 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         return poly;
     }
-}
 
-interface Api {
+    private boolean isGooglePlayServicesAvailable() {
+        GoogleApiAvailability googleAPI = GoogleApiAvailability.getInstance();
+        int result = googleAPI.isGooglePlayServicesAvailable(this);
+        if (result != ConnectionResult.SUCCESS) {
+            if (googleAPI.isUserResolvableError(result)) {
+                googleAPI.getErrorDialog(this, result,
+                        0).show();
+            }
+            return false;
+        }
+        return true;
+    }
 
-    /*
-     * Retrofit get annotation with our URL
-     * And our method that will return us details of student.
-     */
-    @GET("api/directions/json?key=AIzaSyC22GfkHu9FdgT9SwdCWMwKX1a4aohGifM")
-    Call<Example> getJson(@Query("origin") String origin, @Query("destination") String destination);
+    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
+
+    public boolean checkLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this,
+                Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+
+            // Asking user if explanation is needed
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this,
+                    Manifest.permission.ACCESS_FINE_LOCATION)) {
+
+                // Show an explanation to the user *asynchronously* -- don't block
+                // this thread waiting for the user's response! After the user
+                // sees the explanation, try again to request the permission.
+
+                //Prompt the user once explanation has been shown
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                        MY_PERMISSIONS_REQUEST_LOCATION);
+
+
+            } else {
+                // No explanation needed, we can request the permission.
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                        MY_PERMISSIONS_REQUEST_LOCATION);
+            }
+            return false;
+        } else {
+            return true;
+        }
+    }
 
 }

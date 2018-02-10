@@ -7,6 +7,13 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Route {
+    @Override
+    public String toString() {
+        return "Route{" +
+                "legs=" + legs +
+                ", overviewPolyline=" + overviewPolyline +
+                '}';
+    }
 
     @SerializedName("legs")
     @Expose
