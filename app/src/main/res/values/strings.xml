@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Travel Buddy</string>
+    <string name="title_activity_maps">Map</string>
+    <string name="google_maps_key">AIzaSyAB_TWmsVj4TEsuqWPiX0ZyEnVuLyQq5O8</string>
+</resources>
