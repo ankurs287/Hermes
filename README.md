@@ -1,4 +1,5 @@
 # Travel-Buddy
+Hermes - Your Travel Buddy
 
 ![Alt Text](/app/Slide1.JPG)
 ![Alt Text](/app/Slide2.JPG)
