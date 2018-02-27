@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:float="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context="com.godfather.ankur.travelbuddy.HomeB">
+
+    <!--<pl.droidsonroids.gif.GifImageView-->
+        <!--android:layout_width="match_parent"-->
+        <!--android:layout_height="match_parent"-->
+        <!--android:background="@drawable/back"-->
+        <!--android:src="@drawable/back2" />-->
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingLeft="10dp"
+        android:paddingRight="10dp">
+
+        <com.wrapp.floatlabelededittext.FloatLabeledEditText
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp"
+            float:fletPadding="10dp">
+
+            <EditText
+                android:id="@+id/cityname"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="City name"
+                android:text="New Delhi" />
+        </com.wrapp.floatlabelededittext.FloatLabeledEditText>
+
+        <com.gc.materialdesign.views.ButtonRectangle
+            android:id="@+id/hotelbtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginTop="5dp"
+            android:background="#1E88E5"
+            android:text="Choose hotel" />
+
+        <com.wrapp.floatlabelededittext.FloatLabeledEditText
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:layout_marginLeft="20dp"
+            android:layout_marginRight="20dp">
+
+            <EditText
+                android:id="@+id/hc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Hotel Chosen" />
+        </com.wrapp.floatlabelededittext.FloatLabeledEditText>
+
+
+        <ListView
+            android:id="@+id/listView"
+            android:layout_width="match_parent"
+            android:layout_height="0dip"
+            android:layout_above="@+id/go"
+            android:layout_alignParentTop="true"
+            android:layout_weight="1"
+            android:choiceMode="multipleChoice" />
+
+        <com.gc.materialdesign.views.ButtonRectangle
+            android:id="@+id/go"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_centerHorizontal="true"
+            android:layout_gravity="center"
+            android:layout_marginTop="5dp"
+            android:background="#1E88E5"
+            android:onClick="go"
+            android:text="GO" />
+
+    </LinearLayout>
+
+</FrameLayout>

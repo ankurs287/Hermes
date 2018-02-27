@@ -2,15 +2,15 @@ package com.godfather.ankur.travelbuddy;
 
 import android.Manifest;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.content.ContextCompat;
-import android.view.View;
-import android.widget.Button;
-import android.widget.TextView;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
 
 import com.godfather.ankur.travelbuddy.POJO.Example;
 import com.godfather.ankur.travelbuddy.debug.Debug;
@@ -20,8 +20,12 @@ import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.SupportMapFragment;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
+import com.google.android.gms.maps.model.MapStyleOptions;
+import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.Polyline;
+import com.google.android.gms.maps.model.PolylineOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.google.firebase.firestore.DocumentSnapshot;
@@ -31,6 +35,7 @@ import com.google.firebase.firestore.QuerySnapshot;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Random;
 
 import retrofit.Call;
 import retrofit.Callback;
@@ -41,36 +46,250 @@ import retrofit.Retrofit;
 public class MainActivity extends FragmentActivity implements OnMapReadyCallback {
 
     private GoogleMap mMap;
-    LatLng origin;
-    LatLng dest;
-    ArrayList<LatLng> MarkerPoints;
-    TextView ShowDistanceDuration;
-    Polyline line;
 
     ArrayList<LatLng> nodes;
     FirebaseFirestore db;
     LatLng source;
+    String cityname;
+    RetrofitMaps service;
+    long[][] graph;
+    int[] optGraph;
+    int[] colorGraph;
+    int[] optPolyLines;
+    boolean[] assigned;
+    GetListener getDistanceListener;
+    private PolylineOptions[][] polylineGraph;
+    ArrayList<String> places;
+    ListView listView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        initCheck();
+        Bundle extras = getIntent().getExtras();
+
+        source = new LatLng(extras.getDouble("Lat"), extras.getDouble("Lng"));
+        cityname = extras.getString("city");
+        nodes = (ArrayList<LatLng>) extras.getSerializable("nodes");
+        places = new ArrayList<>();
+//        places.add(extras.getString("sname"));
+        places.addAll((ArrayList<String>) extras.getSerializable("placesname"));
+        Debug.log("source", source, "cityname", cityname, "nodes", nodes.size());
+
+""
+        listView = findViewById(R.id.lv2);
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(this,
+                R.layout.lvitem, android.R.id.text1, places);
+        listView.setAdapter(adapter);
+
+
+        initCheckAndBuildRetrofit();
         db = FirebaseFirestore.getInstance();
-        getNodes();
 
+        final GetListener getNodesListener = new GetListener() {
+            @Override
+            public void onSuccess(Object data) {
+                SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
+                mapFragment.getMapAsync(MainActivity.this);
 
-        // Initializing
-        MarkerPoints = new ArrayList<>();
-        ShowDistanceDuration = findViewById(R.id.show_distance_time);
+                graph = new long[nodes.size()][nodes.size()];
+                polylineGraph = new PolylineOptions[nodes.size()][nodes.size()];
 
-        // Obtain the SupportMapFragment and get notified when the map is ready to be used.
-        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager().findFragmentById(R.id.map);
-        mapFragment.getMapAsync(this);
+                Debug.log("Calling optimal path util");
+                constructGraph();
+            }
+        };
+
+        final int[] nodesDone = {0};
+        getDistanceListener = new GetListener() {
+            @Override
+            public void onSuccess(Object d) {
+                if (d != null && (int) d == -1) {
+                    nodesDone[0]--;
+                    return;
+                }
+                nodesDone[0]++;
+                Debug.log("nodes Done:", nodesDone[0]);
+                if (nodesDone[0] == nodes.size() * (nodes.size() - 1)) {
+                    Debug.log("graph");
+                    for (int i = 0; i < nodes.size(); i++) {
+                        String yu = "";
+                        for (int j = 0; j < nodes.size(); j++) {
+                            yu += (" " + graph[i][j]);
+                        }
+                        Debug.log(yu);
+                    }
+                    Debug.log("Polylines");
+                    for (int i = 0; i < nodes.size(); i++) {
+                        String yu = "";
+                        for (int j = 0; j < nodes.size(); j++) {
+                            yu += (" " + polylineGraph[i][j]);
+                        }
+                        Debug.log(yu);
+                    }
+                    optGraph = new int[nodes.size()];
+                    optPolyLines = new int[nodes.size()];
+                    assigned = new boolean[nodes.size()];
+                    getOptimalGraph(0);
+                    for (int i = 1; i < nodes.size(); i++) {
+                        if (!assigned[i]) {
+                            optGraph[i] = 0;
+                            break;
+                        }
+                    }
+                    Random rnd = new Random();
+                    colorGraph = new int[nodes.size()];
+                    Debug.log("g c");
+                    for (int i = 0; i < nodes.size(); i++) {
+                        int clr = Color.argb(255, rnd.nextInt(256), rnd.nextInt(256), rnd.nextInt(256));
+                        Debug.log(clr);
+                        colorGraph[i] = clr;
+                        Polyline pll = mMap.addPolyline(polylineGraph[i][optGraph[i]].color(Color.WHITE));
+//                        pll.setStartCap(new RoundCap());
+//                        pll.setStartCap(new CustomCap(BitmapDescriptorFactory.fromResource(R.drawable.ic_arrow), 10));
+//                        pll.setEndCap(new CustomCap(BitmapDescriptorFactory.fromResource(R.drawable.ic_arrow), 10));
+                    }
+
+                    String cll = "" + colorGraph[0] + " ";
+                    ArrayList<LatLng> polylatlng = new ArrayList<>();
+                    polylatlng.add(nodes.get(0));
+                    for (int i = optGraph[0]; i != 0; i = optGraph[i]) {
+                        polylatlng.add(nodes.get(i));
+
+                        cll += colorGraph[i];
+                    }
+                    Debug.log("colors ", cll);
+                }
+            }
+        };
+
+        getNodes(getNodesListener);
     }
 
-    private void initCheck() {
+    private void getOptimalGraph(int u) {
+        // fix source
+        long temp = Long.MAX_VALUE;
+        int temp2 = -1;
+        for (int i = 1; i < nodes.size(); i++) {
+            if (!assigned[i] && u != i && temp >= graph[u][i]) {
+                temp = graph[u][i];
+                optGraph[u] = i;
+                temp2 = i;
+            }
+        }
+
+        assigned[u] = true;
+        if (temp2 != -1) {
+            getOptimalGraph(temp2);
+        }
+    }
+
+    private void getNodes(final GetListener getListener) {
+        if (true) {
+            getListener.onSuccess(null);
+            return;
+        }
+        nodes = new ArrayList<>();
+        nodes.add(source);
+
+        Debug.log("getting Nodes");
+        db.collection(cityname).get()
+                .addOnCompleteListener(new OnCompleteListener<QuerySnapshot>() {
+                    @Override
+                    public void onComplete(@NonNull Task<QuerySnapshot> task) {
+                        if (task.isSuccessful()) {
+                            for (DocumentSnapshot document : task.getResult()) {
+                                Debug.log(document.getId() + " => " + document.getData());
+                                HashMap<String, Object> hm = (HashMap<String, Object>) document.getData();
+                                String lat = (String) hm.get("lat");
+                                String lon = (String) hm.get("long");
+                                nodes.add(new LatLng(Double.parseDouble(lat), Double.parseDouble(lon)));
+                            }
+                            getListener.onSuccess(null);
+
+                        } else {
+                            Debug.log("Error getting documents: ", task.getException());
+                        }
+                    }
+                });
+    }
+
+    private void constructGraph() {
+        for (int i = 0; i < nodes.size(); i++) {
+            for (int j = 0; j < nodes.size(); j++) {
+                if (i != j)
+                    getDistance(i, j, "driving");
+            }
+        }
+    }
+
+    private void getDistance(final int u, final int v, String type) {
+        final LatLng origin = nodes.get(u);
+        final LatLng dest = nodes.get(v);
+        Call<Example> call = service.getDistanceDuration("metric", origin.latitude + "," + origin.longitude, dest.latitude + "," + dest.longitude, type);
+
+        call.enqueue(new Callback<Example>() {
+            @Override
+            public void onResponse(Response<Example> response, Retrofit retrofit) {
+                try {
+                    // This loop will go through all the results and add marker on each location.
+                    Debug.log("routes", response.body().getRoutes().size());
+                    long t = Long.MAX_VALUE;
+                    PolylineOptions pl = null;
+                    for (int i = 0; i < response.body().getRoutes().size(); i++) {
+                        String distance = response.body().getRoutes().get(i).getLegs().get(i).getDistance().getText();
+                        long time = response.body().getRoutes().get(i).getLegs().get(i).getDuration().getValue();
+                        Debug.log("Distance:" + distance + ", Duration:" + time);
+                        String encodedString = response.body().getRoutes().get(0).getOverviewPolyline().getPoints();
+                        List<LatLng> list = decodePoly(encodedString);
+//                        line = mMap.addPolyline(new PolylineOptions()
+//                                .addAll(list)
+//                                .width(10)
+//                                .color(Color.RED)
+//                                .geodesic(true)
+//                        );
+                        if (time <= t) {
+                            t = time;
+                            pl = new PolylineOptions()
+                                    .addAll(list)
+                                    .width(8)
+                                    .geodesic(true);
+                        }
+                    }
+                    graph[u][v] = t;
+                    polylineGraph[u][v] = pl;
+                    getDistanceListener.onSuccess(null);
+                } catch (Exception e) {
+                    getDistanceListener.onSuccess((int) -1);
+                    Debug.log("onResponse", "There is an error", e.toString(), e.getStackTrace(), e.getCause(), e.getMessage());
+                }
+            }
+
+            @Override
+            public void onFailure(Throwable t) {
+                Debug.log("onFailure", t.toString());
+            }
+        });
+
+    }
+
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        mMap = googleMap;
+
+        MapStyleOptions style = MapStyleOptions.loadRawResourceStyle(MainActivity.this, R.raw.map_style);
+        mMap.setMapStyle(style);
+
+        mMap.addMarker(new MarkerOptions().position(nodes.get(0)).title(places.get(0)).icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)));
+        for (int i = 1; i < nodes.size(); i++) {
+            mMap.addMarker(new MarkerOptions().position(nodes.get(i)).title(places.get(i)).icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_BLUE)));
+        }
+        mMap.moveCamera(CameraUpdateFactory.newLatLng(source));
+        mMap.animateCamera(CameraUpdateFactory.zoomTo(13));
+    }
+
+    private void initCheckAndBuildRetrofit() {
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             checkLocationPermission();
         }
@@ -82,62 +301,6 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         } else {
             Debug.log("onCreate", "Google Play Services available. Continuing.");
         }
-    }
-
-    private void getNodes() {
-        nodes = new ArrayList<>();
-
-        source = new LatLng(28.596444, 77.036091);
-        Debug.log("getting Nodes");
-        db.collection("New Delhi").get()
-                .addOnCompleteListener(new OnCompleteListener<QuerySnapshot>() {
-                    @Override
-                    public void onComplete(@NonNull Task<QuerySnapshot> task) {
-                        if (task.isSuccessful()) {
-                            for (DocumentSnapshot document : task.getResult()) {
-                                Debug.log(document.getId() + " => " + document.getData());
-                                HashMap<String, Object> hm = (HashMap<String, Object>) document.getData();
-
-                            }
-                        } else {
-                            Debug.log("Error getting documents: ", task.getException());
-                        }
-                    }
-                });
-
-    }
-
-    @Override
-    public void onMapReady(GoogleMap googleMap) {
-        mMap = googleMap;
-
-        // Add a marker in New Delhi and move the camera
-        LatLng Model_Town = new LatLng(28.613939, 77.209021);
-//        mMap.addMarker(new MarkerOptions().position(Model_Town).title("Marker in New "));
-        mMap.moveCamera(CameraUpdateFactory.newLatLng(Model_Town));
-        mMap.animateCamera(CameraUpdateFactory.zoomTo(11));
-
-        origin = new LatLng(28.7158727, 77.1910738);
-        dest = new LatLng(24.7158727, 79.1910738);
-
-        Button btnDriving = findViewById(R.id.btnDriving);
-        btnDriving.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                build_retrofit_and_get_response("driving");
-            }
-        });
-
-        Button btnWalk = findViewById(R.id.btnWalk);
-        btnWalk.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                build_retrofit_and_get_response("walking");
-            }
-        });
-    }
-
-    private void build_retrofit_and_get_response(String type) {
 
         String url = "https://maps.googleapis.com/maps/";
 
@@ -146,46 +309,7 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
                 .addConverterFactory(GsonConverterFactory.create())
                 .build();
 
-        RetrofitMaps service = retrofit.create(RetrofitMaps.class);
-
-        Call<Example> call = service.getDistanceDuration("metric", origin.latitude + "," + origin.longitude, dest.latitude + "," + dest.longitude, type);
-
-        call.enqueue(new Callback<Example>() {
-            @Override
-            public void onResponse(Response<Example> response, Retrofit retrofit) {
-
-                try {
-                    //Remove previous line from map
-                    if (line != null) {
-                        line.remove();
-                    }
-                    // This loop will go through all the results and add marker on each location.
-                    for (int i = 0; i < response.body().getRoutes().size(); i++) {
-                        Debug.log(response.body().getRoutes().get(i));
-                        String distance = response.body().getRoutes().get(i).getLegs().get(i).getDistance().getText();
-                        String time = response.body().getRoutes().get(i).getLegs().get(i).getDuration().getText();
-                        ShowDistanceDuration.setText("Distance:" + distance + ", Duration:" + time);
-//                        String encodedString = response.body().getRoutes().get(0).getOverviewPolyline().getPoints();
-//                        List<LatLng> list = decodePoly(encodedString);
-//                        line = mMap.addPolyline(new PolylineOptions()
-//                                .addAll(list)
-//                                .width(20)
-//                                .color(Color.RED)
-//                                .geodesic(true)
-//                        );
-                    }
-                } catch (Exception e) {
-                    Debug.log("onResponse", "There is an error");
-                    e.printStackTrace();
-                }
-            }
-
-            @Override
-            public void onFailure(Throwable t) {
-                Debug.log("onFailure", t.toString());
-            }
-        });
-
+        service = retrofit.create(RetrofitMaps.class);
     }
 
     private List<LatLng> decodePoly(String encoded) {
@@ -219,6 +343,10 @@ public class MainActivity extends FragmentActivity implements OnMapReadyCallback
         }
 
         return poly;
+    }
+
+    interface GetListener {
+        void onSuccess(Object data);
     }
 
     private boolean isGooglePlayServicesAvailable() {
